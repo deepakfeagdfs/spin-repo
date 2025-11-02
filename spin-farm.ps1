@@ -1,20 +1,38 @@
 #requires -Version 5.1
+<#
+  Spin-Farm – create/delete N identical mining repos
+  Usage (PowerShell):
+    iwr -useb https://raw.githubusercontent.com/YOUR_USER/spin-repo/main/spin-farm.ps1 | iex; spin-farm -Count 20 -Token ghp_XXX -TsKey tskey_XXX -GhUser YOUR_NAME
+#>
 param(
     [int]$Count = 10,
     [string]$Token = "",
-    [string]$TsKey = "",
+    [string]$TsKey  = "",
     [string]$GhUser = "",
     [switch]$Delete
 )
+
 $ErrorActionPreference = "Stop"
 
-# install gh if missing
+# ----------  GitHub CLI check (skip if already installed)  ----------
 if (!(Get-Command gh -ErrorAction SilentlyContinue)) {
     Write-Host "Installing GitHub CLI ..." -ForegroundColor Cyan
-    iwr -useb https://raw.githubusercontent.com/cli/cli/main/install.ps1 | iex
+    # use winget (Windows 10/11) or chocolatey fallback
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        winget install --id GitHub.CLI --accept-package-agreements --accept-source-agreements
+    } elseif (Get-Command choco -ErrorAction SilentlyContinue) {
+        choco install gh -y
+    } else {
+        Write-Host "Please install GitHub CLI manually:  https://cli.github.com" -ForegroundColor Red
+        exit 1
+    }
 }
-if (!(gh auth status)) { gh auth login --hostname github.com }
+if (!(gh auth status)) {
+    Write-Host "Logging in to GitHub CLI ..." -ForegroundColor Yellow
+    gh auth login --hostname github.com
+}
 
+# ----------  helpers  ----------
 function New-Miner {
     param([string]$Name)
     Write-Host "  📦  Creating repo $Name ..." -ForegroundColor Gray
@@ -41,11 +59,13 @@ function Remove-Miner {
     gh repo delete "$GhUser/$Name" --confirm | Out-Null
 }
 
+# ----------  sanity  ----------
 if (!$Token -or !$TsKey -or !$GhUser) {
-    Write-Host "ERROR:  -Token ghp_XXX  -TsKey tskey_XXX  -GhUser YOUR_NAME" -ForegroundColor Red
+    Write-Host "USAGE:  -Token ghp_XXX  -TsKey tskey_XXX  -GhUser YOUR_NAME" -ForegroundColor Red
     exit 1
 }
 
+# ----------  main  ----------
 if ($Delete) {
     Write-Host "Deleting farm ($Count repos) ..." -ForegroundColor Magenta
     1..$Count | ForEach-Object { Remove-Miner -Name "miner-$_" }
